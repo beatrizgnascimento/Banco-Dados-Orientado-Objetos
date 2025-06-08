@@ -187,6 +187,8 @@ SELECT realizaFinanciamento(
 SELECT * FROM Financiamento ORDER BY numero DESC LIMIT 2;
 
 ------------------- Remodelar a tabela Cliente com Financiamento como dado complexo--------------------
+DROP TABLE IF EXISTS Financiamento;
+DROP TABLE IF EXISTS Cliente;
 -- 1. Criar tipo composto para Financiamento
 CREATE TYPE FinanciamentoType AS (
     numero INT,
@@ -204,5 +206,68 @@ CREATE TABLE Cliente (
     Financiamentos FinanciamentoType[] -- Relacionamento 1:N como dado complexo
 );
 
--- 3. Remover tabela Financiamento original 
-DROP TABLE IF EXISTS Financiamento;
+---------------------------------------
+
+INSERT INTO Cliente (CPF, Endereço, Name, Telefone, Financiamentos) 
+VALUES ('11122233344', 'Rua X, 100', 'Cliente X', ARRAY['11999998888'], '{}');
+INSERT INTO Cliente (CPF, Endereço, Name, Telefone, Financiamentos) 
+VALUES ('22233344455', 'Rua Y, 200', 'Cliente Y', ARRAY['11888887777'], '{}');
+
+-- a) Inserir 2 financiamentos para o cliente X
+UPDATE Cliente
+SET Financiamentos = ARRAY[
+    (100, '2025-01-10', 50000.0, 24)::FinanciamentoType,
+    (101, '2025-02-15', 75000.0, 36)::FinanciamentoType
+]
+WHERE CPF = '11122233344';
+
+SELECT * FROM Cliente WHERE CPF = '11122233344';
+
+-- b) Remover o primeiro financiamento do cliente X
+UPDATE Cliente
+SET Financiamentos = Financiamentos[2:] -- Mantém do segundo elemento em diante
+WHERE CPF = '11122233344';
+
+SELECT * FROM Cliente WHERE CPF = '11122233344';
+
+-- C) Inserir um novo financiamento para o cliente X
+UPDATE Cliente
+SET Financiamentos = Financiamentos || 
+ARRAY[(102, '2025-03-20', 100000.0, 48)::FinanciamentoType]
+WHERE CPF = '11122233344';
+SELECT * FROM Cliente WHERE CPF = '11122233344';
+
+-- d) Atualizar o valor do primeiro financiamento do cliente X em menos 30%
+UPDATE Cliente
+SET Financiamentos[1] = ROW(
+    (Financiamentos[1]).numero,
+    (Financiamentos[1]).data,
+    (Financiamentos[1]).valor * 0.7,  
+    (Financiamentos[1]).prazo
+)::FinanciamentoType
+WHERE CPF = '11122233344';
+SELECT * FROM Cliente WHERE CPF = '11122233344';
+
+-- e) Inserir um financiamento para o cliente Y
+UPDATE Cliente
+SET Financiamentos = Financiamentos || 
+ARRAY[(200, '2025-04-25', 150000.0, 60)::FinanciamentoType]
+WHERE CPF = '22233344455';
+
+SELECT * FROM Cliente WHERE CPF = '22233344455';
+
+-- F) Verificar entre os financiamentos X e Y qual o maior valor
+SELECT MAX(f.valor) AS maior_valor
+FROM (
+    SELECT unnest(Financiamentos) AS f
+    FROM Cliente
+    WHERE CPF IN ('11122233344', '22233344455')
+) AS sub;
+
+-- g) Menor prazo entre os financiamentos X e Y
+SELECT MIN(f.prazo) AS menor_prazo
+FROM (
+    SELECT unnest(Financiamentos) AS f
+    FROM Cliente
+    WHERE CPF IN ('11122233344', '22233344455')
+) AS sub;
